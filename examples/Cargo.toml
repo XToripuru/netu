@@ -1,0 +1,18 @@
+[package]
+name = "examples"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+netu = { path = "..", features = ["async"] }
+tokio = { version = "*", features = ["full"] }
+serde = { version = "*", features = ["derive"] }
+
+[[example]]
+name = "sync-client-server"
+path = "sync-client-server.rs"
+
+[[example]]
+name = "sync-forwarding"
+path = "sync-forwarding.rs"

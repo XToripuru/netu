@@ -1,0 +1,19 @@
+[workspace]
+members = ["examples"]
+
+[package]
+name = "netu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "*", optional = true }
+log = "*"
+pretty_env_logger = "*"
+igd = "*"
+local-ip-address = "*"
+serde = { version = "*", features = ["derive"] }
+bincode = "*"
+
+[features]
+async = ["tokio", "igd/aio"]
