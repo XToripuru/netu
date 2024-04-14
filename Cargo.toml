@@ -5,6 +5,9 @@ members = ["examples"]
 name = "netu"
 version = "0.1.0"
 edition = "2021"
+description = "Networking utilities."
+license = "MIT"
+repository = "https://github.com/XToripuru/netu"
 
 [dependencies]
 tokio = { version = "*", optional = true }
