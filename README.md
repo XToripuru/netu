@@ -8,9 +8,9 @@ Main idea of the crate is to boost online game making process but to stay generi
 [crates-badge]: https://img.shields.io/crates/v/netu.svg
 [crates-url]: https://crates.io/crates/netu
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[mit-url]: https://github.com/XToripuru/netu/LICENSE
+[mit-url]: https://github.com/XToripuru/netu/blob/main/LICENSE
 
-[Examples](https://github.com/XToripuru/netu/examples)
+[Examples](https://github.com/XToripuru/netu/tree/main/examples)
 
 ## Features
 
@@ -21,7 +21,7 @@ Main idea of the crate is to boost online game making process but to stay generi
 
 ## License
 
-This project is licensed under the [MIT license](https://github.com/XToripuru/netu/LICENSE).
+This project is licensed under the [MIT license](https://github.com/XToripuru/netu/blob/main/LICENSE).
 
 ## Contribution
 
