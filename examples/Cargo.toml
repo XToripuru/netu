@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 netu = { path = "..", features = ["async"] }
-tokio = { version = "*", features = ["full"] }
-serde = { version = "*", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
 
 [[example]]
 name = "sync-client-server"
