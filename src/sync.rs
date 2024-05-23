@@ -9,14 +9,15 @@ use std::{
 };
 use igd::{search_gateway, PortMappingProtocol, SearchOptions};
 use local_ip_address::local_ip;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::{DeserializeOwned, Deserialize}, Serialize};
 use bincode;
 
 /// A wrapper for `TcpStream` that allows to simply send and receive structs which implement `serde::{Serialize, Deserialize}`.
 pub struct MessageStream {
     inner: TcpStream,
     offset: usize,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
+    referenced: bool
 }
 
 impl MessageStream {
@@ -27,7 +28,8 @@ impl MessageStream {
             MessageStream {
                 inner: stream,
                 offset: 0,
-                buffer: vec![0u8; 1024]
+                buffer: vec![0u8; 1024],
+                referenced: false
             }
         })
     }
@@ -39,9 +41,25 @@ impl MessageStream {
         self.inner.write_all(&raw)?;
         Ok(())
     }
+    /// Send a type that implements `serde::Serialize`.
+    /// Does not allocate intermediate buffer.
+    /// This function is preferable if the message contains a lifetime.
+    pub fn send_ref<M: Serialize>(&mut self, message: M) -> Result<(), Box<dyn Error>> {
+        let header = (8 + bincode::serialized_size(&message)?).to_be_bytes();
+        self.inner.write_all(&header)?;
+        bincode::serialize_into(&mut self.inner, &message)?;
+        Ok(())
+    }
     /// Receieve a type that implements `serde::Deserialize`.
     /// This function is non-blocking and has internal buffering.
     pub fn recv<M: DeserializeOwned>(&mut self) -> Result<Option<M>, Box<dyn Error>> {
+        if self.referenced {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            self.buffer.drain(0..size);
+            self.offset -= size;
+            self.referenced = false;
+        }
+
         let n = match self.inner.read(&mut self.buffer[self.offset..]) {
             Ok(n) => n,
             Err(err) if err.kind() == ErrorKind::WouldBlock => {
@@ -78,6 +96,54 @@ impl MessageStream {
 
         Ok(None)
     }
+    /// Receieve a type that implements `serde::Deserialize`.
+    /// This function is non-blocking and has internal buffering.
+    /// This function is preferable if the message contains a lifetime.
+    pub fn recv_ref<'a, M: Deserialize<'a>>(&'a mut self) -> Result<Option<M>, Box<dyn Error>> {
+        if self.referenced {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            self.buffer.drain(0..size);
+            self.offset -= size;
+            self.referenced = false;
+        }
+
+        let n = match self.inner.read(&mut self.buffer[self.offset..]) {
+            Ok(n) => n,
+            Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                return Ok(None)
+            },
+            err => err?
+        };
+        self.offset += n;
+
+        // Extend buffer while it's full
+        while self.offset == self.buffer.len() {
+            self.buffer.extend(std::iter::repeat(0).take(self.buffer.len() * 2));
+
+            // If the buffer is full it most likely means that there's more waiting already
+            let n = match self.inner.read(&mut self.buffer[self.offset..]) {
+                Ok(n) => n,
+                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                    break
+                },
+                err => err?
+            };
+            self.offset += n;
+        }
+
+        if self.offset > 8 {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            if self.offset >= size {
+                let message: M = bincode::deserialize(&self.buffer[8..size])?;
+                self.referenced = true;
+                // self.buffer.drain(0..size);
+                // self.offset -= size;
+                return Ok(Some(message));
+            }
+        }
+
+        Ok(None)
+    }
 }
 
 pub trait TcpListenerExt {
@@ -102,7 +168,8 @@ impl TcpListenerExt for TcpListener {
             MessageStream {
                 inner: stream,
                 offset: 0,
-                buffer: vec![0u8; 1024]
+                buffer: vec![0u8; 1024],
+                referenced: false
             },
             addr
         ))

@@ -24,13 +24,14 @@ use tokio::{
 };
 use igd::{aio::search_gateway, PortMappingProtocol, SearchOptions};
 use local_ip_address::local_ip;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::{DeserializeOwned, Deserialize}, Serialize};
 use bincode;
 
 pub struct AsyncMessageStream {
     inner: TcpStream,
     offset: usize,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
+    referenced: bool
 }
 
 impl AsyncMessageStream {
@@ -39,7 +40,8 @@ impl AsyncMessageStream {
             AsyncMessageStream {
                 inner: stream,
                 offset: 0,
-                buffer: vec![0u8; 1024]
+                buffer: vec![0u8; 1024],
+                referenced: false
             }
         })
     }
@@ -51,6 +53,13 @@ impl AsyncMessageStream {
         Ok(())
     }
     pub async fn recv<M: DeserializeOwned>(&mut self) -> Result<Option<M>, Box<dyn Error>> {
+        if self.referenced {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            self.buffer.drain(0..size);
+            self.offset -= size;
+            self.referenced = false;
+        }
+
         let n = self.inner.read(&mut self.buffer[self.offset..]).await?;
         self.offset += n;
 
@@ -69,6 +78,37 @@ impl AsyncMessageStream {
                 let message: M = bincode::deserialize(&self.buffer[8..size])?;
                 self.buffer.drain(0..size);
                 self.offset -= size;
+                return Ok(Some(message));
+            }
+        }
+
+        Ok(None)
+    }
+    pub async fn recv_ref<'a, M: Deserialize<'a>>(&'a mut self) -> Result<Option<M>, Box<dyn Error>> {
+        if self.referenced {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            self.buffer.drain(0..size);
+            self.offset -= size;
+            self.referenced = false;
+        }
+
+        let n = self.inner.read(&mut self.buffer[self.offset..]).await?;
+        self.offset += n;
+
+        // Extend buffer while it's full
+        while self.offset == self.buffer.len() {
+            self.buffer.extend(std::iter::repeat(0).take(self.buffer.len() * 2));
+
+            // If the buffer is full it most likely means that there's more waiting already
+            let n = self.inner.read(&mut self.buffer[self.offset..]).await?;
+            self.offset += n;
+        }
+
+        if self.offset > 8 {
+            let size = u64::from_be_bytes(self.buffer[0..8].try_into().unwrap()) as usize;
+            if self.offset >= size {
+                let message: M = bincode::deserialize(&self.buffer[8..size])?;
+                self.referenced = true;
                 return Ok(Some(message));
             }
         }
@@ -99,7 +139,8 @@ impl AsyncTcpListenerExt for TcpListener {
             AsyncMessageStream {
                 inner: stream,
                 offset: 0,
-                buffer: vec![0u8; 1024]
+                buffer: vec![0u8; 1024],
+                referenced: false
             },
             addr
         ))

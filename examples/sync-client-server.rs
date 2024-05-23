@@ -51,5 +51,5 @@ fn server() {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Tick {
-    count: u64
+    count: i32
 }
